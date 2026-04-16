@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>DFA Minimizer</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+<script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+
+<style>
+body { 
+    background-image: linear-gradient(to top, #fbc2eb 0%, #a6c1ee 100%);
+    min-height: 100vh;
+    font-family: 'Poppins', sans-serif;
+    padding-bottom: 50px;
+}
+
+.header { color: #2c3e50; padding:20px; text-align:center; margin-bottom:20px; }
+.header h2 { font-weight: 600; letter-spacing: 0.5px; font-size: 2.2rem; }
+.header p { font-weight: 400; opacity: 0.85; font-size: 1.1rem; }
+
+.section-title { border-left:5px solid #5A67D8; padding-left:10px; margin-top:20px; font-weight:bold; }
+ul { list-style-type: none; padding-left: 0; }
+ul li::before { content: "•"; color: #5A67D8; font-weight: bold; margin-right: 8px; }
+
+.nav-pills .nav-link { color: #2c3e50; font-weight: 600; border-radius: 50px; margin: 0 5px; background: rgba(255, 255, 255, 0.4); transition: all 0.3s ease; }
+.nav-pills .nav-link.active { background-color: #7B8CFF; color: white; box-shadow: 0 4px 15px rgba(123, 140, 255, 0.4); }
+
+.form-control { background-color: #EAF3FB; border: 1px solid #cbdff5; }
+.form-control:focus { background-color: #EAF3FB; box-shadow: 0 0 5px rgba(90,103,216,0.3); }
+
+.card { background: rgba(255, 255, 255, 0.25); backdrop-filter: blur(10px); border-radius: 15px; border: 1px solid rgba(255, 255, 255, 0.3); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1); }
+
+.btn-primary, .btn-outline-secondary { background-color: #7B8CFF; border-color: #7B8CFF; color: white; }
+.btn-primary:hover, .btn-outline-secondary:hover { background-color: #5A6BDB; border-color: #5A6BDB; }
+.btn-capsule { border-radius:50px; padding:12px 30px; position:relative; overflow:hidden; }
+
+/* REGEX HELPER BUTTONS */
+.regex-btn {
+    background: #ffffff;
+    border: 1px solid #cbdff5;
+    border-radius: 8px;
+    padding: 6px 16px;
+    margin: 4px;
+    font-family: monospace;
+    font-weight: bold;
+    color: #5A67D8;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+.regex-btn:hover { background: #7B8CFF; color: white; transform: translateY(-2px); }
+
+.table { background-color: #EAF3FB !important; border-color: #cbdff5; }
+.table th, .table td { background-color: #EAF3FB !important; }
+.table-dark th { background-color: #EAF3FB !important; color: black !important; font-weight: 600; }
+
+#loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; display: none; justify-content: center; align-items: center; z-index: 9999; }
+.loader-wrapper { display: flex; gap: 10px; }
+.dot { width: 14px; height: 14px; border-radius: 50%; background-color: #7B8CFF; animation: bounce 0.6s infinite alternate ease-in-out; }
+.dot:nth-child(2) { animation-delay: 0.2s; }
+.dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bounce { 0% { transform: translateY(0); opacity: 0.5; } 100% { transform: translateY(-10px); opacity: 1; } }
+
+/* FIXED COMPACT CANVAS FOR DRAWING */
+#mynetwork { 
+    max-width: 600px; 
+    height: 350px; 
+    margin: 0 auto;
+    border: 2px solid #cbdff5; 
+    background: #EAF3FB; 
+    border-radius: 10px; 
+}
+</style>
+</head>
+
+<body class="container mt-4">
+
+<div id="loader"><div class="loader-wrapper"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
+
+<div class="header">
+    <h2>DFA Minimization Visualizer</h2>
+    <p>Choose your input method below to generate and minimize</p>
+</div>
+
+<div id="errorBox" class="alert alert-danger text-center" style="display:none;">
+    {% if error %}{{ error }}{% endif %}
+</div>
+{% if error %}
+<script>document.getElementById('errorBox').style.display = 'block';</script>
+{% endif %}
+
+<div class="card p-3 shadow-sm mb-4">
+    <p class="mb-2"><b>DFA:</b> A Deterministic Finite Automaton is defined as a 5-tuple (Q, Σ, δ, q₀, F) where:</p>
+    <ul>
+        <li><b>Q</b> → Finite set of States</li>
+        <li><b>Σ</b> → Set of Input Symbols</li>
+        <li><b>δ</b> → Transition Function</li>
+        <li><b>q₀</b> → Initial (Start) State</li>
+        <li><b>F</b> → Set of Final (Accepting) States</li>
+    </ul>
+    <p class="mb-0 mt-2">Minimization is required to obtain the minimal version of any DFA, which consists of the minimum number of states possible while recognizing the exact same language.</p>
+</div>
+
+<ul class="nav nav-pills nav-justified mb-4" id="pills-tab" role="tablist">
+    <li class="nav-item"><button class="nav-link active" id="pills-regex-tab" data-bs-toggle="pill" data-bs-target="#pills-regex" type="button">1. Regular Expression</button></li>
+    <li class="nav-item"><button class="nav-link" id="pills-manual-tab" data-bs-toggle="pill" data-bs-target="#pills-manual" type="button">2. Manual Table</button></li>
+    <li class="nav-item"><button class="nav-link" id="pills-draw-tab" data-bs-toggle="pill" data-bs-target="#pills-draw" type="button">3. Draw Graph</button></li>
+</ul>
+
+<div class="tab-content" id="pills-tabContent">
+
+    <div class="tab-pane fade show active" id="pills-regex">
+        <div class="card p-4 shadow">
+            <h5 class="section-title mt-0">Input Regular Expression</h5>
+            <p class="text-muted small mb-2">Use the buttons below to help build your expression.</p>
+            
+            <div class="mb-3">
+                <button type="button" class="regex-btn" onclick="insertBrackets()">() Bracket</button>
+                <button type="button" class="regex-btn" onclick="insertRegex('+')">+ Union</button>
+                <button type="button" class="regex-btn" onclick="insertRegex('.')">. Concat</button>
+                <button type="button" class="regex-btn" onclick="insertRegex('*')">* Closure</button>
+            </div>
+
+            <form method="POST" onsubmit="showLoader()">
+                <div class="row mb-3">
+                    <div class="col-md-9">
+                        <input type="text" class="form-control form-control-lg" name="regex_input" id="regex_input" placeholder="e.g., (0+1)* . 0" required>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" class="btn btn-primary btn-capsule w-100 h-100">Minimize</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="tab-pane fade" id="pills-manual">
+        <form method="POST" class="card p-4 shadow" onsubmit="return validateForm()">
+            <h5 class="section-title mt-0">Input DFA Table</h5>
+            <div class="row">
+                <div class="col-md-6"><input id="states" class="form-control mb-3" name="states" placeholder="States (eg: q0 q1 q2)"></div>
+                <div class="col-md-6"><input id="symbols" class="form-control mb-3" name="symbols" placeholder="Symbols (eg: 0 1)"></div>
+            </div>
+            <div class="row">
+                <div class="col-md-6"><input id="start" class="form-control mb-3" name="start" placeholder="Start State"></div>
+                <div class="col-md-6"><input id="final" class="form-control mb-3" name="final" placeholder="Final States"></div>
+            </div>
+            <div class="text-center"><button type="button" class="btn btn-outline-secondary btn-capsule mb-3" onclick="generate()">⚙️ Generate Table</button></div>
+            <table class="table table-bordered text-center" id="table"></table>
+            <div class="text-center"><button type="submit" class="btn btn-primary btn-lg btn-capsule">Minimize DFA</button></div>
+        </form>
+    </div>
+
+    <div class="tab-pane fade" id="pills-draw">
+        <div class="card p-4 shadow">
+            <h5 class="section-title mt-0">Draw DFA Canvas</h5>
+            <p class="text-muted small">Use the <b>Edit</b> toolbar inside the canvas below to Add Nodes (States) and Add Edges (Transitions).</p>
+            <div id="mynetwork" class="mb-3"></div>
+            <div class="row mt-2">
+                <div class="col-md-6"><input type="text" id="draw_start" class="form-control mb-3" placeholder="Start State"></div>
+                <div class="col-md-6"><input type="text" id="draw_final" class="form-control mb-3" placeholder="Final States"></div>
+            </div>
+            <div class="text-center"><button type="button" class="btn btn-primary btn-lg btn-capsule" onclick="submitDrawnDFA()">Minimize Drawn DFA</button></div>
+        </div>
+    </div>
+
+</div>
+
+<form id="hiddenDrawForm" method="POST" style="display: none;"></form>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+function showError(msg){ document.getElementById("errorBox").style.display = "block"; document.getElementById("errorBox").innerText = msg; window.scrollTo(0,0); }
+function clearError(){ document.getElementById("errorBox").style.display = "none"; }
+function showLoader(){ document.getElementById("loader").style.display="flex"; }
+
+// --- PERSIST ACTIVE TAB & DATA ---
+document.querySelectorAll('button[data-bs-toggle="pill"]').forEach(tab => {
+    tab.addEventListener('shown.bs.tab', function (event) {
+        sessionStorage.setItem('activeTab', event.target.id);
+    });
+});
+
+document.getElementById("regex_input").addEventListener("input", function() {
+    sessionStorage.setItem("regexData", this.value);
+});
+
+window.addEventListener('load', function() {
+    const activeTabId = sessionStorage.getItem('activeTab') || 'pills-regex-tab';
+    const tabEl = document.getElementById(activeTabId);
+    if (tabEl) { new bootstrap.Tab(tabEl).show(); }
+
+    const rData = sessionStorage.getItem("regexData");
+    if(rData) document.getElementById("regex_input").value = rData;
+
+    const mData = JSON.parse(sessionStorage.getItem("dfaData"));
+    if(mData){
+        document.getElementById("states").value = mData.states || ""; 
+        document.getElementById("symbols").value = mData.symbols || ""; 
+        document.getElementById("start").value = mData.start || ""; 
+        document.getElementById("final").value = mData.final || "";
+        if(mData.states && mData.symbols){ 
+            generate(); 
+            setTimeout(()=>{ 
+                Object.keys(mData.transitions).forEach(key=>{ 
+                    let input = document.getElementsByName(key)[0]; 
+                    if(input) input.value = mData.transitions[key]; 
+                }); 
+            }, 100); 
+        }
+    }
+});
+
+// --- REGEX HELPERS ---
+function insertRegex(char) {
+    const input = document.getElementById('regex_input');
+    const startPos = input.selectionStart; const endPos = input.selectionEnd;
+    const text = input.value;
+    input.value = text.substring(0, startPos) + char + text.substring(endPos);
+    input.selectionStart = input.selectionEnd = startPos + char.length;
+    input.focus();
+}
+
+function insertBrackets() {
+    const input = document.getElementById('regex_input');
+    const startPos = input.selectionStart; const endPos = input.selectionEnd;
+    const text = input.value;
+    input.value = text.substring(0, startPos) + '()' + text.substring(endPos);
+    input.selectionStart = input.selectionEnd = startPos + 1; 
+    input.focus();
+}
+
+// --- MANUAL TABLE LOGIC ---
+function saveDFA(){
+    let data = { states: document.getElementById("states").value, symbols: document.getElementById("symbols").value, start: document.getElementById("start").value, final: document.getElementById("final").value, transitions: {} };
+    let states = data.states.trim().split(/\s+/); let symbols = data.symbols.trim().split(/\s+/);
+    states.forEach(s=>{ symbols.forEach(sym=>{ let val = document.getElementsByName(`${s}_${sym}`)[0]?.value; if(val) data.transitions[`${s}_${sym}`] = val; }); });
+    sessionStorage.setItem("dfaData", JSON.stringify(data));
+}
+
+function generate(){
+    clearError();
+    let states = document.getElementById("states").value.trim().split(/\s+/); let symbols = document.getElementById("symbols").value.trim().split(/\s+/);
+    if(!states[0] || !symbols[0]) return showError("Enter states and symbols.");
+    let table = document.getElementById("table"); table.innerHTML = "";
+    let header = "<tr class='table-dark'><th>State</th>"; symbols.forEach(s => header += `<th>${s}</th>`); header += "</tr>"; table.innerHTML += header;
+    states.forEach(s=>{ let row = `<tr><td><b>${s}</b></td>`; symbols.forEach(sym=>{ row += `<td><input name="${s}_${sym}" class="form-control text-center"></td>`; }); row += "</tr>"; table.innerHTML += row; });
+}
+
+function validateForm(){
+    clearError(); saveDFA();
+    let states = document.getElementById("states").value.trim().split(/\s+/); let symbols = document.getElementById("symbols").value.trim().split(/\s+/); let start = document.getElementById("start").value.trim();
+    if(!start || !states.includes(start)) return showError("Invalid start state.");
+    showLoader(); return true;
+}
+
+// --- DRAW GRAPH LOGIC (FIXED BLANK CANVAS) ---
+let nodes = new vis.DataSet([]); 
+let edges = new vis.DataSet([]); 
+let network = null; // Declare globally but don't initialize yet
+
+function initNetwork() {
+    if (network !== null) return; // Only init once
+    
+    let container = document.getElementById('mynetwork');
+    network = new vis.Network(container, { nodes, edges }, { 
+        manipulation: { 
+            enabled: true, 
+            addNode: function(d,cb){
+                let l = prompt("State Name:");
+                if(l){ 
+                    d.id = l; d.label = l; d.shape = "circle"; 
+                    cb(d); 
+                    // Safely keep Add Node mode active using setTimeout
+                    setTimeout(() => network.addNodeMode(), 50);
+                } else { cb(null); }
+            }, 
+            addEdge: function(d,cb){
+                let l = prompt("Transition Symbol:");
+                if(l){ 
+                    d.label = l; d.arrows = "to"; 
+                    cb(d); 
+                    // Safely keep Add Edge mode active using setTimeout
+                    setTimeout(() => network.addEdgeMode(), 50); 
+                } else { cb(null); }
+            } 
+        } 
+    });
+
+    network.on("zoom", function (params) {
+        const minZoom = 0.5; const maxZoom = 2.5; 
+        if (params.scale < minZoom) { network.moveTo({ scale: minZoom }); } 
+        else if (params.scale > maxZoom) { network.moveTo({ scale: maxZoom }); }
+    });
+}
+
+// Wait until the Draw Tab is clicked to initialize Vis.js so it gets proper dimensions
+document.getElementById('pills-draw-tab').addEventListener('shown.bs.tab', () => { 
+    initNetwork();
+    if (network) { network.redraw(); network.fit(); }
+});
+
+function submitDrawnDFA() {
+    clearError();
+    let allNodes = nodes.get(); let allEdges = edges.get(); let startState = document.getElementById('draw_start').value.trim(); let finalStates = document.getElementById('draw_final').value.trim();
+    if (allNodes.length === 0 || !startState) return showError("Draw states and set Start State.");
+    
+    let stateNames = allNodes.map(n => n.id); let symSet = new Set(); allEdges.forEach(e => symSet.add(e.label));
+    let hiddenForm = document.getElementById('hiddenDrawForm'); hiddenForm.innerHTML = ''; 
+    hiddenForm.appendChild(createHiddenInput('states', stateNames.join(' '))); hiddenForm.appendChild(createHiddenInput('symbols', Array.from(symSet).join(' ')));
+    hiddenForm.appendChild(createHiddenInput('start', startState)); hiddenForm.appendChild(createHiddenInput('final', finalStates));
+    allEdges.forEach(e => { hiddenForm.appendChild(createHiddenInput(`${e.from}_${e.label}`, e.to)); });
+    
+    showLoader(); hiddenForm.submit();
+}
+
+function createHiddenInput(name, value) { let i = document.createElement('input'); i.type = 'hidden'; i.name = name; i.value = value; return i; }
+</script>
+</body>
+</html>
